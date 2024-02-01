@@ -8,8 +8,8 @@ import '../domain/models/news.dart';
 
 class ListNews extends StatefulWidget {
   final Box<News> favBox;
-  const ListNews({Key? key, required this.favBox}) : super(key: key);
 
+  const ListNews({Key? key, required this.favBox}) : super(key: key);
 
   @override
   _ListNewsState createState() => _ListNewsState();
@@ -103,7 +103,48 @@ class _ListNewsState extends State<ListNews> {
                     );
                   }),
             ),
-            Center(child: Text('Favorites content goes here')),
+            Center(
+              child: FutureBuilder(
+                future: Future.value(widget.favBox.values.toList()),
+                // Retrieve all values from Hive
+                builder: (context, AsyncSnapshot<List<News>> snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return CircularProgressIndicator();
+                  } else if (snapshot.hasError) {
+                    return Text('Error: ${snapshot.error}');
+                  } else {
+                    List<News> favoriteNews = snapshot.data ?? [];
+
+                    return ListView.builder(
+                      itemCount: favoriteNews.length,
+                      itemBuilder: (context, index) {
+                        var news = favoriteNews[index];
+                        return Column(
+                          children: [
+                            ListTile(
+                              onTap: () {
+                                _launchUrl(
+                                  Uri.parse(news.url ?? ""),
+                                );
+                              },
+                              title: Image.network(
+                                news.imageUrl,
+                                height: 200,
+                              ),
+                              subtitle: Text(
+                                news.title,
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            Divider(),
+                          ],
+                        );
+                      },
+                    );
+                  }
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -117,12 +158,31 @@ class _ListNewsState extends State<ListNews> {
       List<String>? favoriteArticles =
           prefs.getStringList('favorite_articles') ?? [];
 
+      var news = News(
+        imageUrl: article.urlToImage,
+        title: article.title,
+        description: article.description,
+        isFavorite: article.isFavorite,
+        url: article.url,
+      );
+
       if (article.isFavorite) {
-        // Add article to favorites
-        favoriteArticles.add(article.title);
+        if (!favoriteArticles.contains(article.title)) {
+          // Add article to favorites
+          favoriteArticles.add(article.title);
+          widget.favBox.add(news);
+          print('Added to favorites: ${news.title}');
+        }
       } else {
         // Remove article from favorites
         favoriteArticles.remove(article.title);
+        int index = widget.favBox.values
+            .toList()
+            .indexWhere((news) => news.url == article.url);
+        if (index != -1) {
+          widget.favBox.deleteAt(index);
+          print('Removed from favorites: ${news.title}');
+        }
       }
 
       await prefs.setStringList('favorite_articles', favoriteArticles);
@@ -131,7 +191,6 @@ class _ListNewsState extends State<ListNews> {
       print('Error toggling favorite: $e');
     }
   }
-
 
   Future<void> _launchUrl(Uri url) async {
     if (!await launchUrl(url)) {
